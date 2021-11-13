@@ -20,11 +20,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn get_command(&self) -> &'a str {
+    pub fn get_command(&self) -> &str {
         self.command
     }
 
-    pub fn get_args(&self) -> Vec<&'a str> {
+    pub fn get_args(&self) -> Vec<&str> {
         // I'm assuming this does what I think it does and just clones the refferences
         self.args.clone()
     }

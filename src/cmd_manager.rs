@@ -1,16 +1,10 @@
-use std::process::Command;
 use os_pipe;
+use std::process::Command;
 // TODO: impement actual argument parsing
 
 /* TODO:
- * - Implement this system as follows:
- *   have the parser group the command and args together, and state what
- *   separator was used between them. Then when the executor goes to run the
- *   commands it can detrmine how to start the commands and weather pipes are
- *   needed. Currently we do all this in the executor.
- * - We also need to have the parser or executor check for anomolies in the
- *   command arg such as a pipe at the end of the line
- * - Rename our Command class to something not already taken*/
+ * - We need to have the parser or executor check for anomolies in the
+ *   command arg such as a pipe at the end of the line etc */
 
 #[derive(Debug, Copy, Clone)]
 enum CmdAtom<'a> {
@@ -48,7 +42,7 @@ impl<'p> Parser<'p> {
         match snippet {
             // TODO: add more symbol types
             "|" => Some("|"),
-             _  => None,
+            _ => None,
         }
     }
 
@@ -72,7 +66,7 @@ impl<'p> Parser<'p> {
                     so_far.push(CmdAtom::Executable(element));
                 }
                 so_far
-            },
+            }
             None => {
                 // initialize the list
                 Vec::new()
@@ -95,7 +89,8 @@ impl<'p> Parser<'p> {
     }
 
     /// This is pivate as it's only ment to be called by the executor
-    // TODO: consider changing the return value so were not passing so much data on the stack
+    /* TODO: consider changing the return value so were not passing so much
+     * data on the stack */
     fn get_parsed_commands(&self) -> Vec<CommandParts<'p>> {
         let mut ret = Vec::new();
         let mut curr_command: Option<CommandParts<'p>> = None;
@@ -107,13 +102,12 @@ impl<'p> Parser<'p> {
                             // update the one created in the Sym branch
                             cmd.executable = *atom;
                             curr_command = Some(cmd);
-                        },
+                        }
                         None => {
                             curr_command = Some(CommandParts::new(*atom, Vec::new()));
-                        },
+                        }
                     }
-
-                },
+                }
                 CmdAtom::Arg(_) => {
                     if let Some(mut cmd) = curr_command {
                         cmd.args.push(*atom);
@@ -121,7 +115,7 @@ impl<'p> Parser<'p> {
                     } else {
                         panic!("There should be no args comming before a command");
                     }
-                },
+                }
                 CmdAtom::Sym(_) => {
                     if let Some(cmd) = curr_command {
                         ret.push(cmd);
@@ -129,9 +123,9 @@ impl<'p> Parser<'p> {
                     } else {
                         panic!("There should be no Sym comming before curr_command has a value");
                     }
-                },
+                }
             }
-            if i == self.atoms.len()-1 {
+            if i == self.atoms.len() - 1 {
                 if let Some(cmd) = curr_command {
                     // this is the last iteration
                     ret.push(cmd);
@@ -147,18 +141,17 @@ impl<'p> Parser<'p> {
     fn get_parsed_syms(&self) -> Vec<CmdAtom<'p>> {
         self.atoms
             .iter()
-            .filter(|atom| {matches!(atom, CmdAtom::Sym(_))})
+            .filter(|atom| matches!(atom, CmdAtom::Sym(_)))
             .copied()
             .collect()
     }
 }
 
 pub struct CmdExecutor<'c> {
-    parsed_line: &'c Parser<'c>
+    parsed_line: &'c Parser<'c>,
 }
 
-impl<'c> CmdExecutor<'c>
-{
+impl<'c> CmdExecutor<'c> {
     pub fn new(to_exec: &'c Parser<'c>) -> Self {
         CmdExecutor {
             parsed_line: to_exec,
@@ -201,28 +194,32 @@ impl<'c> CmdExecutor<'c>
             .collect()
     }
 
-    fn manage_command_startup(to_start: &mut Vec<Command>, sepparating_syms: &Vec<CmdAtom<'c>>)
-                              -> Result<(), std::io::Error> {
+    fn manage_command_startup(
+        to_start: &mut Vec<Command>,
+        sepparating_syms: &Vec<CmdAtom<'c>>,
+    ) -> Result<(), std::io::Error> {
         if sepparating_syms.is_empty() && !to_start.is_empty() {
             let process = &mut to_start[0];
             match process.spawn() {
                 Ok(mut child) => {
                     /* if it ran wait for it to finish and print
-                    * any errors */
+                     * any errors */
                     if let Err(e) = child.wait() {
                         Err(e)
                     } else {
                         Ok(())
                     }
-                },
+                }
                 Err(err) => Err(err),
             }
         } else if !sepparating_syms.is_empty() && !to_start.is_empty() {
             /* we should have either n-1 or n symbols where n is the number of
-            * commands unless the last symbol is a | */
+             * commands unless the last symbol is a | */
             // FIXME: put the command startup code here
             Ok(())
-        } else {Ok(())}
+        } else {
+            Ok(())
+        }
     }
 
     //TODO: move the error messaging out into to main loop

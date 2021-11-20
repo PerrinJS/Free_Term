@@ -46,7 +46,9 @@ impl<'p> Parser<'p> {
         }
     }
 
-    fn parse_atoms_rec(mut string_parts: std::str::Split<'p, &str>) -> Vec<CmdAtom<'p>> {
+    fn parse_atoms_rec(
+        mut string_parts: std::str::Split<'p, &str>,
+    ) -> Vec<CmdAtom<'p>> {
         match string_parts.next() {
             Some(element) => {
                 let mut so_far = Parser::parse_atoms_rec(string_parts);
@@ -55,7 +57,9 @@ impl<'p> Parser<'p> {
                     so_far.push(CmdAtom::Executable(element));
                 } else {
                     // if we previously had a symbol we don't convert to arg
-                    if let Some(CmdAtom::Executable(prev_element)) = so_far.pop() {
+                    if let Some(CmdAtom::Executable(prev_element)) =
+                        so_far.pop()
+                    {
                         so_far.push(match Parser::is_symbol(prev_element) {
                             Some(a) => CmdAtom::Sym(a),
                             None => CmdAtom::Arg(prev_element),
@@ -74,7 +78,9 @@ impl<'p> Parser<'p> {
         }
     }
 
-    fn parse_atoms(string_parts: std::str::Split<'p, &str>) -> Vec<CmdAtom<'p>> {
+    fn parse_atoms(
+        string_parts: std::str::Split<'p, &str>,
+    ) -> Vec<CmdAtom<'p>> {
         let mut parsed_atoms = Parser::parse_atoms_rec(string_parts);
         parsed_atoms.reverse();
         parsed_atoms
@@ -104,7 +110,8 @@ impl<'p> Parser<'p> {
                             curr_command = Some(cmd);
                         }
                         None => {
-                            curr_command = Some(CommandParts::new(*atom, Vec::new()));
+                            curr_command =
+                                Some(CommandParts::new(*atom, Vec::new()));
                         }
                     }
                 }
@@ -113,13 +120,18 @@ impl<'p> Parser<'p> {
                         cmd.args.push(*atom);
                         curr_command = Some(cmd);
                     } else {
-                        panic!("There should be no args comming before a command");
+                        panic!(
+                            "There should be no args comming before a command"
+                        );
                     }
                 }
                 CmdAtom::Sym(_) => {
                     if let Some(cmd) = curr_command {
                         ret.push(cmd);
-                        curr_command = Some(CommandParts::new(CmdAtom::Executable(""), Vec::new()));
+                        curr_command = Some(CommandParts::new(
+                            CmdAtom::Executable(""),
+                            Vec::new(),
+                        ));
                     } else {
                         panic!("There should be no Sym comming before curr_command has a value");
                     }
@@ -169,7 +181,9 @@ impl<'c> CmdExecutor<'c> {
     }
 
     /// Gets a vec of arg &str's from the tuple form of command
-    fn get_cmd_args(cmd_as_tuple: (&CmdAtom, &Vec<CmdAtom<'c>>)) -> Vec<&'c str> {
+    fn get_cmd_args(
+        cmd_as_tuple: (&CmdAtom, &Vec<CmdAtom<'c>>),
+    ) -> Vec<&'c str> {
         let executable_atom_args = cmd_as_tuple.1;
         let mut ret = Vec::new();
         for executable_arg in executable_atom_args.iter() {
@@ -187,7 +201,8 @@ impl<'c> CmdExecutor<'c> {
             .iter()
             .map(|cmd_part| -> Command {
                 let cmd_part_tuple = cmd_part.as_tuple();
-                let mut ret = Command::new(CmdExecutor::get_cmd_str(cmd_part_tuple));
+                let mut ret =
+                    Command::new(CmdExecutor::get_cmd_str(cmd_part_tuple));
                 ret.args(CmdExecutor::get_cmd_args(cmd_part_tuple));
                 ret
             })
@@ -225,10 +240,14 @@ impl<'c> CmdExecutor<'c> {
     //TODO: move the error messaging out into to main loop
     //fn run(&self) -> Result<(), std::io::Error> {
     pub fn run(&self) {
-        let mut commands = CmdExecutor::build_commands(&self.parsed_line.get_parsed_commands());
+        let mut commands = CmdExecutor::build_commands(
+            &self.parsed_line.get_parsed_commands(),
+        );
         let symbols = self.parsed_line.get_parsed_syms();
         if !commands.is_empty() {
-            if let Err(e) = CmdExecutor::manage_command_startup(&mut commands, &symbols) {
+            if let Err(e) =
+                CmdExecutor::manage_command_startup(&mut commands, &symbols)
+            {
                 println!("{}", e);
             }
         }

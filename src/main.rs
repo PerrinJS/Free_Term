@@ -29,8 +29,10 @@ fn main() {
                     /* There doesn't seem to be a traditional fork and exec
                      * just a combined thing */
                     // Create a new command executor
-                    let parsed_args = free_term::cmd_manager::Parser::new(trimmed_line);
-                    let executor = free_term::cmd_manager::CmdExecutor::new(&parsed_args);
+                    let parsed_args =
+                        free_term::cmd_manager::Parser::new(trimmed_line);
+                    let executor =
+                        free_term::cmd_manager::CmdExecutor::new(&parsed_args);
                     executor.run();
                 }
             }

@@ -1,5 +1,10 @@
 use os_pipe;
 use std::process::Command;
+
+/* This modules purpose is to parse and dispatch text strings as commands.
+ * Thease commands can be either executables on the system or from the list of
+ * builtin commands */
+
 // TODO: impement actual argument parsing
 
 /* TODO:
@@ -7,16 +12,16 @@ use std::process::Command;
  *   command arg such as a pipe at the end of the line etc */
 
 #[derive(Debug, Copy, Clone)]
-enum CmdAtom<'a> {
+pub enum CmdAtom<'a> {
     Executable(&'a str),
     Arg(&'a str),
     Sym(&'a str),
 }
 
 #[derive(Debug)]
-struct CommandParts<'d> {
-    executable: CmdAtom<'d>,
-    args: Vec<CmdAtom<'d>>,
+pub struct CommandParts<'d> {
+    pub executable: CmdAtom<'d>,
+    pub args: Vec<CmdAtom<'d>>,
 }
 
 impl<'d> CommandParts<'d> {
@@ -27,7 +32,7 @@ impl<'d> CommandParts<'d> {
         }
     }
 
-    fn as_tuple(&self) -> (&CmdAtom<'d>, &Vec<CmdAtom<'d>>) {
+    pub fn as_tuple(&self) -> (&CmdAtom<'d>, &Vec<CmdAtom<'d>>) {
         (&self.executable, &self.args)
     }
 }
@@ -147,6 +152,7 @@ impl<'p> Parser<'p> {
     }
 }
 
+
 pub struct CmdExecutor<'c> {
     parsed_line: &'c Parser<'c>,
 }
@@ -196,7 +202,7 @@ impl<'c> CmdExecutor<'c> {
 
     fn manage_command_startup(
         to_start: &mut Vec<Command>,
-        sepparating_syms: &Vec<CmdAtom<'c>>,
+        sepparating_syms: &[CmdAtom<'c>],
     ) -> Result<(), std::io::Error> {
         if sepparating_syms.is_empty() && !to_start.is_empty() {
             let process = &mut to_start[0];

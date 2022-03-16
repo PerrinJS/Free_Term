@@ -1,45 +1,65 @@
+use std::collections::HashMap;
+use std::sync::Once;
+use std::mem::MaybeUninit;
 use std::env;
 
 use crate::cmd_manager::{CommandParts, CmdAtom};
 
-/* TO IMPLEMENT BUILTINS CREATE A BUILIN COMMAND OBJECT
- * HAVE SOME KIND OF LOOKUP TABLE OR WAY OF COMPARING THE STRING WE HAVE TO A
- * POTENTAL MATCH */
-
-/* FIXME: this needs to be created as a class, as it needs to be initiallized.
- * we should make it a singleton, this is fine as it is readonly */
+/* TODO: tidy up the impl */
 
 type BuiltinFn = fn(&[CmdAtom]) -> Box<String>;
-const NUM_BUILTINS: usize = 1;
-const BUILTINS: [(&str, BuiltinFn); NUM_BUILTINS] = [
-    ("cd", builtin_cd),
-];
 
-pub fn is_builtin(cmd_str: &str) -> bool {
-    for pair in BUILTINS.iter() {
-        if pair.0 == cmd_str {
-            return true;
-        }
-    }
-    return false;
+struct BuiltinHandler<'a>{
+    inner: HashMap<&'a str, BuiltinFn>
 }
 
-fn get_builtin(cmd_str: &str) -> Option<BuiltinFn> {
-    assert!(is_builtin(cmd_str));
-    let mut ret = None;
-    for pair in BUILTINS.iter() {
-        if pair.0 == cmd_str {
-            ret = Some(pair.1)
+impl BuiltinHandler<'_> {
+    pub fn singleton() -> &'static BuiltinHandler<'static> {
+        //Create the uninitialized object
+        static mut SINGLETON: MaybeUninit<BuiltinHandler> = MaybeUninit::uninit();
+        static ONCE: Once = Once::new();
+
+        unsafe {
+            ONCE.call_once(|| {
+                let mut map = HashMap::new();
+                map.insert("cd", builtin_cd as BuiltinFn);
+                let singleton = BuiltinHandler {
+                    inner: map,
+                };
+                //Put it in the static var
+                SINGLETON.write(singleton);
+            });
+
+            //return the refference to either the new copy or one that was created before
+            SINGLETON.assume_init_ref()
         }
     }
-    ret
+
+    pub fn is_builtin(cmd_str: &str) -> bool {
+        BuiltinHandler::singleton().inner.contains_key(cmd_str)
+    }
+
+    fn get_builtin(cmd_str: &str) -> Option<BuiltinFn> {
+        assert!(BuiltinHandler::is_builtin(cmd_str));
+        //We need to derefference it
+        if let Some(func) = BuiltinHandler::singleton().inner.get(cmd_str) {
+            Some(*func)
+        }
+        else {
+            None
+        }
+    }
 }
+
+
+//NOTE: stand allone functions from here on
+
 
 pub fn handle_builtins(command: CommandParts) -> Option<Box<String>> {
     // This should not be used unless we have already checked that this is a builtin
     if let CmdAtom::Executable(e) = command.executable {
-        assert!(is_builtin(e));
-        if let Some(to_call) = get_builtin(e) {
+        assert!(BuiltinHandler::is_builtin(e));
+        if let Some(to_call) = BuiltinHandler::get_builtin(e) {
             Some(to_call(&command.args))
         } else {
             None

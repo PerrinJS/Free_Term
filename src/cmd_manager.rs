@@ -1,15 +1,18 @@
+#![allow(unused_imports, non_snake_case)]
 use os_pipe;
 use std::process::Command;
+use crate::cmd_abstraction::AbstractCmd;
+use crate::builtins::{BuiltinHandler, Builtin};
 
 /* This modules purpose is to parse and dispatch text strings as commands.
  * Thease commands can be either executables on the system or from the list of
  * builtin commands */
 
-// TODO: impement actual argument parsing
+ //TODO: read the FIXMEs
 
 /* TODO:
  * - We need to have the parser or executor check for anomolies in the
- *   command arg such as a pipe at the end of the line etc */
+ *   command arg such as a pipe at the end of the line, extra symbols etc */
 
 #[derive(Debug, Copy, Clone)]
 pub enum CmdAtom<'a> {
@@ -18,7 +21,29 @@ pub enum CmdAtom<'a> {
     Sym(&'a str),
 }
 
-#[derive(Debug)]
+impl CmdAtom<'_> {
+    pub fn is_Execuitable(self) -> bool {
+       if let CmdAtom::Executable(_) = self { true } else { false }
+    }
+    pub fn is_Arg(self) -> bool {
+       if let CmdAtom::Arg(_) = self { true } else { false }
+    }
+    pub fn is_Sym(self) -> bool {
+       if let CmdAtom::Sym(_) = self { true } else { false }
+    }
+
+    pub fn are_Args(args: Vec<CmdAtom>) -> bool
+    {
+        for arg in args {
+            if !arg.is_Arg(){
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct CommandParts<'d> {
     pub executable: CmdAtom<'d>,
     pub args: Vec<CmdAtom<'d>>,
@@ -43,10 +68,11 @@ pub struct Parser<'p> {
 
 impl<'p> Parser<'p> {
     /// Returns the string snippet if it is a symbol or None if not
-    fn is_symbol(snippet: &'p str) -> Option<&'p str> {
+    fn is_symbol(snippet: &str) -> Option<&str> {
         match snippet {
             // TODO: add more symbol types
-            "|" => Some("|"),
+            //"|" => Some("|"),
+            "&&" => Some("&&"),
             _ => None,
         }
     }
@@ -96,9 +122,9 @@ impl<'p> Parser<'p> {
     /// This is pivate as it's only ment to be called by the executor
     /* TODO: consider changing the return value so were not passing so much
      * data on the stack */
-    fn get_parsed_commands(&self) -> Vec<CommandParts<'p>> {
-        let mut ret = Vec::new();
-        let mut curr_command: Option<CommandParts<'p>> = None;
+    fn get_parsed_commands(&self) -> Vec<CommandParts> {
+        let mut ret: Vec<CommandParts> = Vec::new();
+        let mut curr_command: Option<CommandParts> = None;
         for (i, atom) in self.atoms.iter().enumerate() {
             match atom {
                 CmdAtom::Executable(_) => {
@@ -143,7 +169,7 @@ impl<'p> Parser<'p> {
     }
 
     /// This is pivate as it's only ment to be called by the executor
-    fn get_parsed_syms(&self) -> Vec<CmdAtom<'p>> {
+    fn get_parsed_syms(&self) -> Vec<CmdAtom> {
         self.atoms
             .iter()
             .filter(|atom| matches!(atom, CmdAtom::Sym(_)))
@@ -165,7 +191,7 @@ impl<'c> CmdExecutor<'c> {
     }
 
     /// Gets the command &str from the tuple form of command
-    fn get_cmd_str(cmd_as_tuple: (&CmdAtom<'c>, &Vec<CmdAtom>)) -> &'c str {
+    fn get_cmd_str(cmd_as_tuple: (&CmdAtom<'c>, &Vec<CmdAtom<'c>>)) -> &'c str {
         let executable_atom = cmd_as_tuple.0;
         if let CmdAtom::Executable(ret) = executable_atom {
             ret
@@ -175,7 +201,7 @@ impl<'c> CmdExecutor<'c> {
     }
 
     /// Gets a vec of arg &str's from the tuple form of command
-    fn get_cmd_args(cmd_as_tuple: (&CmdAtom, &Vec<CmdAtom<'c>>)) -> Vec<&'c str> {
+    fn get_cmd_args(cmd_as_tuple: (&CmdAtom<'c>, &Vec<CmdAtom<'c>>)) -> Vec<&'c str> {
         let executable_atom_args = cmd_as_tuple.1;
         let mut ret = Vec::new();
         for executable_arg in executable_atom_args.iter() {
@@ -188,42 +214,64 @@ impl<'c> CmdExecutor<'c> {
         ret
     }
 
-    fn build_commands(command_parts: &[CommandParts<'c>]) -> Vec<Command> {
+    fn build_commands(command_parts: &[CommandParts<'c>]) -> Vec<Box<dyn AbstractCmd + 'c>> {
         command_parts
             .iter()
-            .map(|cmd_part| -> Command {
+            .map(|cmd_part| -> Box<dyn AbstractCmd> {
                 let cmd_part_tuple = cmd_part.as_tuple();
-                let mut ret = Command::new(CmdExecutor::get_cmd_str(cmd_part_tuple));
-                ret.args(CmdExecutor::get_cmd_args(cmd_part_tuple));
-                ret
+                let exe = if let CmdAtom::Executable(a) = cmd_part_tuple.0 
+                    {*a} else {panic!("There should only be CmdAtom::Executable's here")};
+
+                if !BuiltinHandler::is_builtin(exe) {
+                    let mut ret = Command::new(CmdExecutor::get_cmd_str(cmd_part_tuple));
+                    ret.args(CmdExecutor::get_cmd_args(cmd_part_tuple));
+                    Box::new(ret)
+                }
+                else {
+                    if let Some(func) = BuiltinHandler::get_builtin(exe)
+                    {
+                        Box::new(Builtin::new(func, cmd_part_tuple.1.clone()))
+                    } else {
+                        /* This should be impossable since we just
+                         * ran 'is_builtin' above */
+                        panic!("Not builtin");
+                    }
+                }
+
             })
             .collect()
     }
 
     fn manage_command_startup(
-        to_start: &mut Vec<Command>,
+        to_start: &'_ mut Vec<Box<dyn AbstractCmd + '_>>,
         sepparating_syms: &[CmdAtom<'c>],
     ) -> Result<(), std::io::Error> {
         if sepparating_syms.is_empty() && !to_start.is_empty() {
-            let process = &mut to_start[0];
-            match process.spawn() {
-                Ok(mut child) => {
-                    /* if it ran wait for it to finish and print
-                     * any errors */
-                    if let Err(e) = child.wait() {
-                        Err(e)
-                    } else {
-                        Ok(())
-                    }
-                }
-                Err(err) => Err(err),
-            }
+            to_start[0].run()
         } else if !sepparating_syms.is_empty() && !to_start.is_empty() {
             /* we should have either n-1 or n symbols where n is the number of
              * commands unless the last symbol is a | */
-            // FIXME: put the command startup code here
+            let mut sym_iter = sepparating_syms.iter();
+            for prog in to_start {
+                let res = (**prog).run();
+                if let Ok(_) = res {
+                    if let Some(CmdAtom::Sym(a)) = sym_iter.next() {
+                        match a {
+                            //FIXME: add support for the rest of the symbols
+                            &"&&" => {/*Just run the next func*/},
+                            _ => {unimplemented!()}
+                        }
+                    } else {
+                        panic!("There should only be symbols here");
+                    }
+                } else {
+                    //There was an error
+                    return res;
+                }
+            }
             Ok(())
         } else {
+            // FIXME: figure out what to do when there are extra symbols
             Ok(())
         }
     }
@@ -231,7 +279,8 @@ impl<'c> CmdExecutor<'c> {
     //TODO: move the error messaging out into to main loop
     //fn run(&self) -> Result<(), std::io::Error> {
     pub fn run(&self) {
-        let mut commands = CmdExecutor::build_commands(&self.parsed_line.get_parsed_commands());
+        let parsed_commands: Vec<CommandParts<'c>> = self.parsed_line.get_parsed_commands();
+        let mut commands: Vec<Box<dyn AbstractCmd + 'c>> = CmdExecutor::build_commands(&parsed_commands);
         let symbols = self.parsed_line.get_parsed_syms();
         if !commands.is_empty() {
             if let Err(e) = CmdExecutor::manage_command_startup(&mut commands, &symbols) {

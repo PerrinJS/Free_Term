@@ -9,12 +9,27 @@ use crate::cmd_manager::{CommandParts, CmdAtom};
 
 type BuiltinFn = fn(&[CmdAtom]) -> Box<String>;
 
-struct BuiltinHandler<'a>{
-    inner: HashMap<&'a str, BuiltinFn>
+pub struct Builtin<'a> {
+    pub func: BuiltinFn,
+    pub args: Vec<CmdAtom<'a>>,
 }
 
-impl BuiltinHandler<'_> {
-    pub fn singleton() -> &'static BuiltinHandler<'static> {
+impl<'a> Builtin<'a>
+{
+    pub fn new(func: BuiltinFn, args: Vec<CmdAtom<'a>>) -> Self {
+        Builtin{
+            func: func,
+            args: args,
+        }
+    }
+}
+
+pub struct BuiltinHandler{
+    inner: HashMap<&'static str, BuiltinFn>
+}
+
+impl BuiltinHandler {
+    pub fn singleton() -> &'static BuiltinHandler {
         //Create the uninitialized object
         static mut SINGLETON: MaybeUninit<BuiltinHandler> = MaybeUninit::uninit();
         static ONCE: Once = Once::new();
@@ -39,11 +54,11 @@ impl BuiltinHandler<'_> {
         BuiltinHandler::singleton().inner.contains_key(cmd_str)
     }
 
-    fn get_builtin(cmd_str: &str) -> Option<BuiltinFn> {
+    pub fn get_builtin(cmd_str: &str) -> Option<BuiltinFn> {
         assert!(BuiltinHandler::is_builtin(cmd_str));
-        //We need to derefference it
         if let Some(func) = BuiltinHandler::singleton().inner.get(cmd_str) {
-            Some(*func)
+            //TODO: Change the interface so we don't have to clone it (make it a &)
+            Some(func.clone())
         }
         else {
             None
@@ -53,21 +68,6 @@ impl BuiltinHandler<'_> {
 
 
 //NOTE: stand allone functions from here on
-
-
-pub fn handle_builtins(command: CommandParts) -> Option<Box<String>> {
-    // This should not be used unless we have already checked that this is a builtin
-    if let CmdAtom::Executable(e) = command.executable {
-        assert!(BuiltinHandler::is_builtin(e));
-        if let Some(to_call) = BuiltinHandler::get_builtin(e) {
-            Some(to_call(&command.args))
-        } else {
-            None
-        }
-    } else {
-        None
-    }
-}
 
 // FIXME: this is just while we don't have an actuall cd directory handler
 fn up_dir(curr_dir_chars: &mut Vec<char>) -> String {
